@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}Nhận hàng · ROBOT{% endblock %}
+{% block content %}
+<div class="eyebrow">INBOUND RECEIVING</div>
+<div class="heading">
+  <div><h1>Ghi sổ nhận hàng</h1><p>Chọn chuyến và dòng hàng, xem trước kho đích, rồi đối chiếu tồn kho sau khi ghi sổ.</p></div>
+  {% if posting_enabled %}<span class="status warning">Đang bật ghi sổ</span>{% else %}<span class="status neutral">Chế độ xem an toàn</span>{% endif %}
+</div>
+{% if result %}
+<section class="panel receipt-result" aria-label="Đối chiếu nhập hàng vừa ghi">
+  <div class="panel-head">
+    <div><h2>Đối chiếu tồn kho sau khi ghi sổ</h2>
+      <p>Phiếu <strong>{{ result.receipt_number }}</strong> · Chuyến #{{ result.shipment_id }}, dòng {{ result.line_no }}</p></div>
+    {% if result.matches %}<span class="status success">Chênh lệch khớp số lượng nhập</span>
+    {% else %}<span class="status warning">Cần kiểm tra chênh lệch</span>{% endif %}
+  </div>
+  <div class="result-body">
+    <div class="result-location"><strong>{{ result.sku }}</strong> · {{ result.product_name }} <span class="muted">→</span> <strong>Kho {{ result.warehouse_code }}</strong></div>
+    <div class="receipt-metrics">
+      <div class="receipt-metric"><span>Tồn trước nhập</span><strong>{{ result.before_qty }}</strong></div>
+      <div class="receipt-metric"><span>Nhận thêm</span><strong class="green">+{{ result.accepted_quantity }}</strong></div>
+      <div class="receipt-metric"><span>Tồn sau nhập</span><strong>{{ result.after_qty if result.after_qty is not none else 'Chưa kiểm tra được' }}</strong></div>
+    </div>
+    <p class="metric-comment">
+      <strong>Cột cập nhật:</strong> Hiện có (<code>quantity_on_hand</code>).
+      {% if result.matches %}Tồn kho tăng đúng {{ result.accepted_quantity }} đơn vị khi đối chiếu ngay sau ghi sổ.
+      {% elif result.after_qty is none %}Ghi sổ đã thành công nhưng truy vấn lại tồn kho chưa thực hiện được. Kiểm tra trong lịch sử trước khi thử lại.
+      {% else %}Chênh lệch quan sát là {{ result.observed_delta }} thay vì {{ result.accepted_quantity }}. Có thể có thay đổi đồng thời hoặc cần kiểm tra dữ liệu.
+      {% endif %}
+    </p>
+    <div class="result-actions">
+      <a class="btn primary" href="{{ url_for('inventory', q=result.sku, warehouse=result.warehouse_id, receipt=result.receipt_number) }}">Xem đúng SKU và kho</a>
+      <a class="btn" href="{{ url_for('receipt_history', q=result.receipt_number) }}">Xem phiếu trong lịch sử</a>
+    </div>
+    <p class="small muted">Đây là kết quả ghi nhận ngay trong lần thao tác vừa xong. Trang lịch sử cũ không có số tồn trước – sau của các phiếu đã ghi trước đây.</p>
+  </div>
+</section>
+{% endif %}
+<div class="two-cols">
+  <div class="panel">
+    <div class="panel-head"><div><h2>Phiếu nhận hàng mới</h2><p>Mỗi lần ghi sổ tạo một phiếu nhận gồm một dòng sản phẩm.</p></div></div>
+    <form class="form" action="{{ url_for('post_receipt') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Số phiếu nhận hàng <span class="req">*</span><input required maxlength="30" name="receipt_number" placeholder="GR-DEMO-001"></label>
+      <label>Chuyến hàng <span class="req">*</span>
+        <select required name="shipment_id" id="shipment-select">
+          <option value="">-- Chọn chuyến --</option>
+          {% for s in shipments %}<option value="{{ s.shipment_id }}">#{{ s.shipment_id }} · {{ s.tracking_number }} · {{ s.po_number }} ({{ s.shipment_status }})</option>{% endfor %}
+        </select>
+      </label>
+      <label>Dòng sản phẩm (line_no) <span class="req">*</span><input required id="line-no-input" name="line_no" type="number" min="1" placeholder="1"></label>
+      <label>Số lượng được chấp nhận <span class="req">*</span><input required id="accepted-input" name="accepted_quantity" type="number" min="1" placeholder="Ví dụ 5"></label>
+      <label>Người nhận <span class="req">*</span><input required maxlength="100" name="received_by" value="NV_DEMO"></label>
+      <div id="receipt-preview" class="receipt-preview" aria-live="polite">Chọn chuyến và dòng hàng để xem trước sản phẩm, kho nhập và tồn hiện có.</div>
+      <button type="submit" class="btn primary full" {% if not posting_enabled %}disabled title="Bật trong .env trước khi dùng"{% endif %}>Ghi sổ qua Stored Procedure</button>
+    </form>
+    <div class="hint">
+      {% if not posting_enabled %}Để thử ghi thật, đặt <code>ALLOW_RECEIPT_POSTING=true</code> trong .env và khởi động lại Flask. Nên demo trên bản sao database đã sao lưu.
+      {% else %}Thao tác này thay đổi dữ liệu MySQL thật và chứng từ đã ghi không được sửa trực tiếp. Hãy kiểm tra kho, SKU, lượng còn nhận trước khi ghi sổ.{% endif %}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><div><h2>Dòng hàng sẵn có</h2><p>Đã bổ sung kho đích và số tồn hiện có để em biết trước hàng sẽ cộng vào đâu.</p></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Chuyến</th><th>Dòng</th><th>SKU</th><th>Kho nhập</th><th class="num">Tồn hiện có</th><th class="num">Đã giao</th><th class="num">Còn nhận</th><th>Thao tác</th></tr></thead>
+        <tbody>
+          {% for x in items %}
+          <tr>
+            <td>#{{ x.shipment_id }}</td><td>{{ x.line_no }}</td>
+            <td><b>{{ x.sku }}</b><div class="small muted">{{ x.product_name }}</div></td>
+            <td><strong>{{ x.warehouse_code }}</strong></td>
+            <td class="num strong">{{ x.quantity_on_hand }}</td>
+            <td class="num">{{ x.shipped_quantity }}</td>
+            <td class="num {% if x.remaining_to_accept <= 0 %}negative{% endif %}">{{ x.remaining_to_accept }}</td>
+            <td>{% if x.remaining_to_accept > 0 %}<button type="button" class="btn row-select" data-shipment="{{ x.shipment_id }}" data-line="{{ x.line_no }}" data-remaining="{{ x.remaining_to_accept }}">Chọn nhận</button>{% else %}<span class="muted">Đã nhận hết</span>{% endif %}</td>
+          </tr>
+          {% else %}<tr><td colspan="8" class="empty">Chưa có dòng chuyến hàng.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const allItems = {{ items|tojson }};
+  const shipmentSelect = document.getElementById('shipment-select');
+  const lineInput = document.getElementById('line-no-input');
+  const acceptedInput = document.getElementById('accepted-input');
+  const preview = document.getElementById('receipt-preview');
+  function refreshPreview() {
+    const shipmentId = Number(shipmentSelect.value);
+    const lineNo = Number(lineInput.value);
+    const item = allItems.find(x => x.shipment_id === shipmentId && x.line_no === lineNo);
+    preview.replaceChildren();
+    if (!item) {
+      preview.textContent = 'Chọn đúng chuyến và dòng hàng trong bảng bên phải để xem kho và tồn trước nhập.';
+      acceptedInput.removeAttribute('max');
+      return;
+    }
+    const b = document.createElement('strong');
+    b.textContent = item.sku + ' · ' + item.product_name;
+    preview.appendChild(b);
+    const details = document.createElement('div');
+    details.textContent = 'Kho đích: ' + item.warehouse_code + ' | Hiện có: ' + item.quantity_on_hand + ' | Còn có thể nhận: ' + item.remaining_to_accept;
+    preview.appendChild(details);
+    if (item.remaining_to_accept > 0) acceptedInput.max = String(item.remaining_to_accept);
+    else acceptedInput.removeAttribute('max');
+  }
+  shipmentSelect.addEventListener('change', refreshPreview);
+  lineInput.addEventListener('input', refreshPreview);
+  document.querySelectorAll('.row-select').forEach(btn => btn.addEventListener('click', () => {
+    shipmentSelect.value = btn.dataset.shipment;
+    lineInput.value = btn.dataset.line;
+    acceptedInput.value = '';
+    refreshPreview();
+    document.getElementById('receipt-preview').scrollIntoView({behavior:'smooth',block:'center'});
+    acceptedInput.focus({preventScroll:true});
+  }));
+  refreshPreview();
+})();
+</script>
+{% endblock %}

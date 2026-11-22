@@ -1,0 +1,40 @@
+{% extends 'base.html' %}{% block title %}Tồn kho · ROBOT{% endblock %}{% block content %}
+<div class="eyebrow">WAREHOUSE MANAGEMENT</div><div class="heading"><div><h1>Tồn kho khả dụng</h1><p>Tra cứu theo kho và SKU. Khả dụng = hiện có − giữ chỗ.</p></div><span class="pill">VIEW · v_inventory_availability</span></div>
+<div class="panel"><form class="filters" method="get"><label>Tìm SKU hoặc sản phẩm<input type="search" name="q" value="{{ keyword }}" placeholder="Nhập mã SKU hoặc tên..."></label><label>Kho<select name="warehouse"><option value="">Tất cả kho</option>{% for w in warehouses %}<option value="{{ w.warehouse_id }}" {% if selected_warehouse == w.warehouse_id|string %}selected{% endif %}>{{ w.warehouse_code }} · {{ w.warehouse_name }}</option>{% endfor %}</select></label><label class="checklabel"><input type="checkbox" name="low" value="1" {% if low_only %}checked{% endif %}> Chỉ tồn dưới ngưỡng</label><button class="btn primary" type="submit">Lọc dữ liệu</button><a class="btn" href="{{ url_for('inventory') }}">Đặt lại</a></form></div>
+
+{% if receipt_detail or comparison %}
+<section class="panel receipt-result" aria-label="Thông tin phiếu nhập đang tra cứu">
+  <div class="panel-head">
+    <div><h2>Đối chiếu phiếu nhập trên trang Tồn kho</h2>
+      <p>Đúng sản phẩm và kho của phiếu. Số lượng nhập cộng vào <strong>Hiện có (quantity_on_hand)</strong>.</p></div>
+    {% if comparison and comparison.matches %}<span class="status success">Đã đối chiếu sau ghi sổ</span>
+    {% else %}<span class="status neutral">Thông tin chứng từ</span>{% endif %}
+  </div>
+  <div class="result-body">
+    {% if comparison %}
+      <div class="result-location"><strong>Phiếu {{ comparison.receipt_number }}</strong> · {{ comparison.sku }} · Kho <strong>{{ comparison.warehouse_code }}</strong></div>
+      <div class="receipt-metrics">
+        <div class="receipt-metric"><span>Tồn trước khi nhập</span><strong>{{ comparison.before_qty }}</strong></div>
+        <div class="receipt-metric"><span>Số lượng đã nhận</span><strong class="green">+{{ comparison.accepted_quantity }}</strong></div>
+        <div class="receipt-metric"><span>Tồn ngay sau khi nhập</span><strong>{{ comparison.after_qty if comparison.after_qty is not none else 'Chưa xác minh' }}</strong></div>
+      </div>
+      {% if comparison.matches %}
+        <p class="metric-comment"><strong>Đã kiểm tra:</strong> số tồn tăng đúng {{ comparison.accepted_quantity }} ngay sau ghi sổ.
+        {% if rows and rows[0].quantity_on_hand != comparison.after_qty %} Lưu ý: tồn kho hiện tại đã khác số ghi nhận sau phiếu này do có thể có giao dịch tiếp theo.{% endif %}</p>
+      {% else %}<p class="metric-comment">Phiếu đã được ghi sổ, nhưng chưa xác minh được mức chênh lệch. Không nên khẳng định số tồn đã tăng đúng khi trình bày.</p>{% endif %}
+      <p class="small muted">Số tồn trước – sau được ghi nhận trong phiên thao tác trên trình duyệt này, không phải lịch sử tồn kho lâu dài.</p>
+    {% elif receipt_detail %}
+      <div class="result-location"><strong>Phiếu {{ receipt_detail.receipt_number }}</strong> · {{ receipt_detail.sku }} · Kho <strong>{{ receipt_detail.warehouse_code }}</strong></div>
+      <div class="receipt-metrics">
+        <div class="receipt-metric"><span>Số lượng phiếu đã nhận</span><strong class="green">+{{ receipt_detail.accepted_quantity }}</strong></div>
+        <div class="receipt-metric"><span>Cột được cộng</span><strong class="metric-label">Hiện có</strong></div>
+        <div class="receipt-metric"><span>Tồn kho hiện tại</span><strong>{{ rows[0].quantity_on_hand if rows else 'Chưa có dòng tồn kho' }}</strong></div>
+      </div>
+      <p class="metric-comment">Đây là phiếu cũ: hệ thống biết chính xác <strong>số lượng đã nhận</strong> và <strong>kho nhập</strong>, nhưng không lưu tồn trước – sau tại thời điểm đó. Con số tồn kho ở bảng bên dưới là <strong>tồn hiện tại</strong>, không phải tồn ngay sau phiếu.</p>
+    {% endif %}
+    <a class="btn" href="{{ url_for('receipt_history', q=(comparison.receipt_number if comparison else receipt_detail.receipt_number)) }}">Xem phiếu trong lịch sử</a>
+  </div>
+</section>
+{% endif %}
+<div class="panel"><div class="panel-head"><div><h2>Danh sách tồn kho</h2><p>Hiển thị tối đa 250 dòng mỗi lần tra cứu</p></div><span class="pill">{{ rows|length }} dòng</span></div><div class="table-wrap"><table><thead><tr><th>Kho</th><th>SKU</th><th>Tên sản phẩm</th><th class="num">Hiện có</th><th class="num">Giữ chỗ</th><th class="num">Khả dụng</th><th class="num">Ngưỡng</th><th>Trạng thái</th></tr></thead><tbody>{% for x in rows %}<tr><td><b>{{ x.warehouse_code }}</b></td><td class="mono">{{ x.sku }}</td><td>{{ x.product_name }}</td><td class="num"><strong>{{ x.quantity_on_hand }}</strong>{% if comparison and x.sku == comparison.sku and x.warehouse_code == comparison.warehouse_code %}<div class="small green">+{{ comparison.accepted_quantity }} từ phiếu {{ comparison.receipt_number }}</div>{% elif receipt_detail and x.sku == receipt_detail.sku and x.warehouse_code == receipt_detail.warehouse_code %}<div class="small green">Phiếu {{ receipt_detail.receipt_number }} đã nhập +{{ receipt_detail.accepted_quantity }}</div>{% endif %}</td><td class="num">{{ x.quantity_reserved }}</td><td class="num strong">{{ x.quantity_available }}</td><td class="num">{{ x.reorder_point }}</td><td>{% if x.is_below_reorder_point %}<span class="status warning">Dưới ngưỡng</span>{% else %}<span class="status success">Bình thường</span>{% endif %}</td></tr>{% else %}<tr><td colspan="8" class="empty">Không tìm thấy dòng tồn kho phù hợp.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

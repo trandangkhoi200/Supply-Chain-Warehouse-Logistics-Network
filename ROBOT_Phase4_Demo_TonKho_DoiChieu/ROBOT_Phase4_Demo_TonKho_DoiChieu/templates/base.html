@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ROBOT Logistics{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="logo" href="{{ url_for('dashboard') }}"><span class="logo-mark">R</span><span><strong>ROBOT</strong><small>SUPPLY CHAIN SYSTEM</small></span></a>
+    <div class="nav-label">QUẢN LÝ</div>
+    <nav aria-label="Điều hướng">
+      <a class="navitem {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><span>▦</span> Tổng quan</a>
+      <a class="navitem {% if page == 'inventory' %}active{% endif %}" href="{{ url_for('inventory') }}"><span>▣</span> Tồn kho</a>
+      <a class="navitem {% if page == 'orders' %}active{% endif %}" href="{{ url_for('orders') }}"><span>▤</span> Đơn đặt mua</a>
+      <a class="navitem {% if page == 'receiving' %}active{% endif %}" href="{{ url_for('receiving') }}"><span>↧</span> Nhận hàng</a>
+      <a class="navitem {% if page == 'receipt_history' %}active{% endif %}" href="{{ url_for('receipt_history') }}"><span>◷</span> Lịch sử nhập hàng</a>
+    </nav>
+    <div class="side-bottom"><span class="dot"></span> MySQL / {{ database_name }}<small>Đồ án CSDL · Phase 4</small></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><span class="crumb">HỆ THỐNG QUẢN LÝ KHO HÀNG</span><span class="top-pill">ROBOT · DEMO</span></header>
+    <div class="container">
+      {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}
+      {% block content %}{% endblock %}
+      <footer>ROBOT · Phase 4 Integration &amp; Defense · Dùng cho demo học phần, không phải hệ thống sản xuất.</footer>
+    </div>
+  </main>
+</body>
+</html>
